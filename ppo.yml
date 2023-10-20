@@ -1,0 +1,20 @@
+buffer_size: 2048
+d_model: 12
+e_weight: 0.0
+epsilon: 0.2
+gamma: 0.99
+input_channels: 1
+kernel_size: 3
+lmda: 0.97
+lr: 0.01
+max_steer: 0.3
+max_time: 120.0
+path: null
+persist: false
+state_callbacks: null
+stride: 1
+terminal_conditions:
+- ego_off_road
+timestep: 0.25
+v_weight: 0.95
+viewer_class: null

@@ -362,7 +362,7 @@ class PPOConfig(ScenarioManager):
         )
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
 
-    def create_agent(self, scenario: Scenario, entity: Entity) -> Agent:
+    def create_agent(self, scnario: Scenario, entity: Entity) -> Agent:
         if entity.ref == "ego":
             controller = VehicleController(entity, max_steer=self.max_steer)
             sensor = MapSensor(entity)
@@ -402,7 +402,7 @@ class EpisodicReward(Metric):
 
     def _reset(self, state):
         self.r = 0.0
-        self.agent = state.agents[self.entity_ref]
+        self.agent = state.agents[state.scenario.entity_by_name(self.entity_ref)]
 
     def _step(self, state):
         self.r += self.agent.r_prev
@@ -514,15 +514,19 @@ def run(FLAGS):
         timestep=config.timestep,
         terminal_conditions=config.terminal_conditions,
     )
-    gym.load_scenario(FLAGS.scenario_path, create_agent=config.create_agent)
     metric = EpisodicReward()
     gym.metrics.append(metric)
+    gym.load_scenario(FLAGS.scenario_path, create_agent=config.create_agent, relabel=True)
+    
 
     rewards, loss = 0.0, 0.0
     for episode in range(FLAGS.episodes):
-        agent = gym.state.agents["ego"]
+        
+        agent = gym.state.agents[gym.state.scenario.entity_by_name('ego')]
+        global device
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         agent.train()
-        gym.rollout()
+        gym.rollout(render=True)
         agent.buffer.update(
             agent.s_prev,
             agent.a_prev,
@@ -550,8 +554,8 @@ def run(FLAGS):
 
     # record a video of the agent
     gym.reset_scenario()
-    gym.state.agents["ego"].eval()
-    gym.rollout(render=True)
+    gym.state.agents[gym.state.scenario.entity_by_name('ego')].eval()
+    gym.rollout(render=True, video_path='./ppo_test.mp4')
 
 
 if __name__ == "__main__":

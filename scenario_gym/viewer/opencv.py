@@ -281,7 +281,7 @@ class OpenCVViewer(Viewer):
         self.video_writer = None
         self._coords_cache = {}
         if self.headless_rendering:
-            fourcc = cv2.VideoWriter_fourcc(*self.codec)
+            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
             self.video_writer = cv2.VideoWriter(
                 output_path,
                 fourcc,
