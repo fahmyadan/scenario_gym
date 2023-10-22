@@ -4,7 +4,38 @@ import numpy as np
 from scenario_gym.controller import VehicleController
 from typing import Tuple
 
+class SimulateBicycleModel:
+    def __init__(self, dt, axle_length):
+        self.dt = dt
+        self.axle_length = axle_length
 
+    def move(self, current_pose, current_speed, control_actions):
+        """
+        Simulate motion of a vehicle using a kinematic bicycle model.
+
+        Args:
+            current_pose (np.ndarray): Current pose of the vehicle [x, y, theta].
+            current_speed (float): Current linear speed of the vehicle.
+            control_actions (np.ndarray): Control actions [acceleration, steering_angle].
+
+        Returns:
+            new_pose (np.ndarray): New pose of the vehicle after time step [x, y, theta].
+            new_speed (float): New linear speed of the vehicle.
+        """
+        x, y, theta = current_pose
+        acceleration, steering_angle = control_actions
+
+        # Update linear speed
+        new_speed = current_speed + (acceleration * self.dt)
+
+        # Update pose using kinematic bicycle model
+        new_x = x + (new_speed * np.cos(theta) * self.dt)
+        new_y = y + (new_speed * np.sin(theta) * self.dt)
+        new_theta = theta + ((new_speed / self.axle_length) * np.tan(steering_angle) * self.dt)
+
+        new_pose = np.array([new_x, new_y, new_theta])
+
+        return new_pose, new_speed
 
 class MPPI_Base(ABC):
 
@@ -34,40 +65,5 @@ class MPPI_Base(ABC):
         return self.vehicle_model._step(state, action)
     
 
+    
 
-    def _step(
-        self, state: np.ndarray, action: np.ndarray
-    ):
-        """
-        Return the agent's next pose from the action.
-
-        Updates the heading based on the steering angle. Then calculates
-        the new speed to return the new velocity.
-        """
-        if isinstance(action, np.ndarray):
-            accel, steer = action.acceleration, action.steering
-        else:
-            raise ValueError("Action must be a np.ndarra")
-
-        accel = np.clip(accel, -self.max_accel, self.max_accel)
-        steer = np.clip(steer, -self.max_steer, self.max_steer)
-
-        pose = state.poses[self.entity].copy()
-        dt = state.next_t - state.t
-        h = pose[3]
-
-        dx = self.speed * np.cos(h)
-        dy = self.speed * np.sin(h)
-        dh = self.speed * np.tan(steer) / self.l
-
-        pose[[0, 1]] += np.array([dx, dy]) * dt
-        pose[3] += dh * dt
-
-        speed = self.speed + accel * dt
-        if not self.allow_reverse:
-            speed = np.maximum(0.0, speed)
-        if self.max_speed is not None:
-            speed = np.minimum(self.max_speed, speed)
-        self.speed = speed
-
-        return pose
