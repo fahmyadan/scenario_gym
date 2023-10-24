@@ -134,6 +134,8 @@ dmypy.json
 
 *.mp4
 .idea/
+*.png 
+
 
 # scenario data
 data
