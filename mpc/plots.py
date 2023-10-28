@@ -2,11 +2,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scenario_gym.road_network import RoadNetwork
 from scenario_gym.road_network.objects import Road, Lane, Intersection
+from scenario_gym.entity import Entity
 from typing import List, Tuple, Optional
 from collections import namedtuple
 from scenario_gym.state import State
 import os 
 from pathlib import Path
+import matplotlib.cm as cm
 
 
 class Plotter: 
@@ -16,6 +18,7 @@ class Plotter:
         self._network = network
         self.initial_pose = initial_pose
         self.global_path = global_path 
+        self.counter = 0 
 
         pass
     
@@ -50,17 +53,29 @@ class Plotter:
     def get_center_line(self, lane):
         return 
     
-    def get_current_vehicle_pose(self, state: State):
-        
-        return
-    
-    @property
-    def current_pose(self):
-        return self.get_current_vehicle_pose()
+    def get_current_vehicle_pose(self, state: State, entity: Entity):
 
-    def get_current_path_samples(self, state: State, trajectory: np.ndarray):
+        full_pose = state.poses[entity]  #x,y,z,yaw,pitch,roll
+        self.current_pose = np.array([full_pose[0], full_pose[1], full_pose[3]]) #x,y,yaw
+
+        return self.current_pose
+    
+
+    def get_current_speed(self, state: State, entity: Entity):
         
-        return
+        self.current_speed = np.linalg.norm(state.velocities[entity][:2])
+
+        return self.current_speed
+
+    
+    def get_current_path_samples(self, state: State, trajectory: np.ndarray, weights: np.ndarray):
+
+        self.current_path_samples = trajectory
+        self.weights = weights
+        
+        return None 
+    
+    
     
     def transpose_reference_path(self, global_path: np.ndarray):
 
@@ -89,6 +104,7 @@ class Plotter:
     
 
     def plot(self):
+        
 
         assert self.global_path is not None, "Global path is None; Please check"
 
@@ -110,8 +126,8 @@ class Plotter:
     
         #Plot the initial pose
         init_x, init_y, init_yaw = self.initial_pose[0], self.initial_pose[1], self.initial_pose[2]
-        plt.plot(init_x, init_y, 'go', markersize=10, label='Initial Pose')
-        plt.arrow(init_x, init_y, 10 * np.cos(init_yaw), 10 * np.sin(init_yaw), head_width=0.1, head_length=0.1, fc='g', ec='g')
+        plt.plot(init_x, init_y, 'go', markersize=7, label='Initial Pose')
+        plt.arrow(init_x, init_y, 10 * np.cos(init_yaw), 10* np.sin(init_yaw), head_width=0.1, head_length=0.1, fc='g', ec='g')
 
         #Plot reference trajectory
         assert self.reference_path is not None, "Transposed reference path is None; Please check"
@@ -125,18 +141,37 @@ class Plotter:
         lane_boundaries = self.get_all_lane_boundaries(self.network.lanes)
 
         for lane in lane_boundaries:
-            plt.plot(lane[0], lane[1], 'k', label='Network Lanes')
+            plt.plot(lane[0], lane[1], 'k', label='__nolegend__')
         
 
-        #Plot the current pose
-
+        #Plot the current pose for step t
+        plt.plot(self.current_pose[0], self.current_pose[1], 'ro', markersize=10, label=f'Current Pose {self.counter}')
+        plt.arrow(self.current_pose[0], self.current_pose[1], 10 * np.cos(self.current_pose[2]), 10* np.sin(self.current_pose[2]), head_width=5, head_length=5, fc='r', ec='r')
         
         #Plot latest path samples
-        plt.xlim(440, 540)
-        plt.ylim(180, 320)
+        normalized_weights = self.weights / np.max(self.weights)
+        min_alpha = 0.3
+        max_alpha = 1.0
+        col_norm = plt.Normalize(0,0.01)
+        cmap = cm.jet
+
+        for k in range(self.current_path_samples.shape[0]):
+           
+            alpha = min_alpha + normalized_weights[k] * (max_alpha - min_alpha)
+
+            col = cmap(col_norm(self.weights[k]))
+            plt.plot(self.current_path_samples[k,0,:], self.current_path_samples[k,1,:], color=col, 
+                   
+                    alpha=alpha)
+
+
+        plt.xlim(550, 350)
+        plt.ylim(380, 150)
         plt.legend()
         
-        plt.savefig(plot_dir+'plot_net.png')
+        plt.savefig(plot_dir+'plot_mppi_'+str(self.counter)+'.png')
+        plt.close()
+        self.counter += 1
 
 
 
