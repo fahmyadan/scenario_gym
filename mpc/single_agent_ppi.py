@@ -18,6 +18,7 @@ import argparse
 import os
 import time
 from plots import Plotter
+import random
 
 class MPPI_Agent(Agent, MPPI_Base):
     """
@@ -55,11 +56,14 @@ class MPPI_Agent(Agent, MPPI_Base):
 
         self.control_vector = np.zeros((2,self.time_horizon))  #2 dimensions for acc + steer
 
-    def init_car_model(self):
+    def init_car_model(self, start_pose, speed):
+        max_steer = flags.max_steer
+        max_acc = flags.max_acc
 
-        self.vehicle_model = SimulateBicycleModel(dt = gym.timestep  ,axle_length= self.entity.catalog_entry.bounding_box.length)
+        self.vehicle_model = SimulateBicycleModel(dt = gym.timestep,axle_length= self.entity.catalog_entry.bounding_box.length, 
+                                                max_steering_angle= max_steer, max_acc=max_acc, pose= start_pose, speed= speed)
 
-        return  self.vehicle_model
+        return self.vehicle_model 
     
     def compute_cost(self, traj, step, goal_pose):
 
@@ -77,7 +81,23 @@ class MPPI_Agent(Agent, MPPI_Base):
         # c_local_yaw = np.linalg.norm(nearest_local_pose[2] - local_goal[2])
 
         total_cost= c_global_distance  
+
+        """
+        Calculate the cost based on the distance between the predicted trajectory 
+        and the reference path. This assumes that the two trajectories are of the 
+        same length and are aligned in time.
+
+        :param predicted_trajectory: np.ndarray of shape (N, 2) where N is the number of timesteps
+        :param reference_path: np.ndarray of shape (N, 2)
+        :return: float, total cost
+        """
         
+        # # Compute the squared difference between the two trajectories
+        # squared_diff = np.sum((predicted_trajectory - reference_path)**2, axis=1)
+        
+        # # Sum up to get the total cost
+        # total_cost = np.sum(squared_diff)
+            
 
 
 
@@ -125,10 +145,10 @@ class MPPI_Agent(Agent, MPPI_Base):
             steer = self.control_vector[1, :] + e_steer
 
             #Keep input in the range
-            U[i, 0, :] = acc
+            U[i, 0, :] = acc  #for trajectory k at for time horizon 
             U[i, 1, :] = steer
 
-            self.init_car_model()
+            self.init_car_model(start_pose, gym_speed)
             sim_pose = deepcopy(start_pose)
             sim_speed = deepcopy(gym_speed)
             for t in range(self.time_horizon):
@@ -156,11 +176,16 @@ class MPPI_Agent(Agent, MPPI_Base):
             S[i] = self.compute_cost(Q[i, :, :], t, goal_pose)
 
         
+        
 
         #Compute weights for each trajectory k
         for k in range(self.k):
             w[k] = np.exp(-1 / flags.lambd * (S[k] - np.min(S)))
         w = w / np.sum(w)
+
+
+        self.plotter.get_current_path_samples(self.dynamic_state, Q, w)
+        self.plotter.plot()
 
         u_out = np.zeros((2, self.time_horizon))
         u_out[0] = w.dot(U[:, 0, :])
@@ -173,6 +198,7 @@ class MPPI_Agent(Agent, MPPI_Base):
 
         return u_out
     
+ 
     def reset(self, state: State) -> None:
         """Reset the agent state at the start of the scenario."""
         self.dynamic_state = state
@@ -188,14 +214,16 @@ class MPPI_Agent(Agent, MPPI_Base):
 
         network = (state.scenario.road_network.roads, state.scenario.road_network.lanes, state.scenario.road_network.intersections)
 
-        plotter = Plotter(network, self.start_pose, self.global_path)
-        plotter.plot()
+        self.plotter = Plotter(network, self.start_pose, self.global_path)
+        # self.plotter.plot()
     
     def _reset(self) -> None:
         
         return None 
     
-    def step(self, state: State) :
+    def step(self, state: State):
+        self.plotter.get_current_vehicle_pose(state, self.entity)
+        self.plotter.get_current_speed(state, self.entity)
         return self._step(state)
     
     def _step(self, obs:np.ndarray) :
@@ -207,7 +235,7 @@ class MPPI_Agent(Agent, MPPI_Base):
         dynamic_state: current state of the simulation (position, velocities etc of the entities) 
         """
 
-        obs = self.dynamic_state.poses[self.entity]
+        obs = self.dynamic_state.poses[self.entity] #obs is x,y,z,h,p,r
         gym_speed = np.linalg.norm(self.dynamic_state.velocities[self.entity][:2])
 
         full_actions = self.compute_input((obs, gym_speed))
@@ -250,7 +278,13 @@ def parse_args():
     )
     parser.add_argument(
         "--max_steer",
-        default=0.3,
+        default=0.7,
+        type=float,
+        help="Maximum steering angle.",
+    )
+    parser.add_argument(
+        "--max_acc",
+        default=5.0,
         type=float,
         help="Maximum steering angle.",
     )
@@ -269,7 +303,7 @@ def parse_args():
     
     parser.add_argument(
         "--k",
-        default=100,
+        default=50,
         type=int,
         help="Total number of sampled trajectories",
     )
@@ -327,11 +361,27 @@ class MPPI_Config(ScenarioManager):
                 controller,
                 sensor,
             )
-        
+
+def seed_all(seed: int) -> None:
+    """Make deterministic."""
+    random.seed(seed)
+    np.random.seed(seed)
+    
 
 def run(FLAGS):
+    from datetime import datetime 
+    current_date_time = datetime.now().strftime("%m-%d-%Y:-%H:%M:%S")
 
     terminal_conditions = ["ego_off_road", "ego_collision"]
+    video_folder_names = ["videos_episodes", "videos_eval"]
+
+    for folder in video_folder_names:
+        path = os.path.join(os.path.dirname(__file__), folder)  
+        if not os.path.exists(path):
+            os.mkdir(path)
+    
+    seed_all(FLAGS.seed)    
+
     global gym
     gym = ScenarioGym(
         terminal_conditions=terminal_conditions,
@@ -349,7 +399,8 @@ def run(FLAGS):
     for episode in range(FLAGS.episodes):
         start = time.time()
         agent = gym.state.agents[gym.state.scenario.entity_by_name('ego')]
-        gym.rollout(render=True, video_path='./mppi_test_rollot.mp4')
+        vid_path = './mpc/videos_episodes/mppi_run_' + current_date_time + '_' + str(episode) + '.mp4'
+        gym.rollout(render=True, video_path=vid_path)
         end = time.time() - start 
         print(f'Episode {episode} took {end} seconds')
         if FLAGS.verbose > 0:
@@ -364,7 +415,10 @@ def run(FLAGS):
 
     # record a video of the agent
     gym.reset_scenario()
-    gym.rollout(render=True, video_path='./mppi_test.mp4')
+      
+    eval_vid_path = './mpc/videos_eval/mppi_test_' + current_date_time + '.mp4'
+
+    gym.rollout(render=True, video_path= eval_vid_path)
 
 
 if __name__ == "__main__":
