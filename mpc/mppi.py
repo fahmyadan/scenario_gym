@@ -5,9 +5,15 @@ from scenario_gym.controller import VehicleController
 from typing import Tuple
 
 class SimulateBicycleModel:
-    def __init__(self, dt, axle_length):
+    def __init__(self, dt, axle_length, max_steering_angle,max_acc, pose, speed):
         self.dt = dt
         self.axle_length = axle_length
+        self.max_steer = max_steering_angle
+        self.max_accel = max_acc
+        self.instant_speed = speed
+        self.pose = pose
+        self.allow_reverse = False
+        self.max_speed = None
 
     def move(self, current_pose, current_speed, control_actions):
         """
@@ -22,18 +28,35 @@ class SimulateBicycleModel:
             new_pose (np.ndarray): New pose of the vehicle after time step [x, y, theta].
             new_speed (float): New linear speed of the vehicle.
         """
-        x, y, theta = current_pose
-        acceleration, steering_angle = control_actions
+        accel, steer= control_actions
+        acceleration = np.clip(accel, -self.max_accel, self.max_accel)
+        steering_angle = np.clip(steer, -self.max_steer, self.max_steer)
 
-        # Update linear speed
-        new_speed = current_speed + (acceleration * self.dt)
+        x, y, theta = current_pose
+
+        
 
         # Update pose using kinematic bicycle model
-        new_x = x + (new_speed * np.cos(theta) * self.dt)
-        new_y = y + (new_speed * np.sin(theta) * self.dt)
-        new_theta = theta + ((new_speed / self.axle_length) * np.tan(steering_angle) * self.dt)
+        new_x = x + (self.instant_speed * np.cos(theta) * self.dt)
+        new_y = y + (self.instant_speed * np.sin(theta) * self.dt)
+        new_theta = theta + ((self.instant_speed / self.axle_length) * np.tan(steering_angle) * self.dt)
+
+        
 
         new_pose = np.array([new_x, new_y, new_theta])
+        #Update speed and pose attribute
+
+        # Update linear speed
+        new_speed = self.instant_speed + (acceleration * self.dt)
+
+        if not self.allow_reverse:
+            new_speed = np.maximum(0.0, new_speed)
+        if self.max_speed is not None:
+            new_speed = np.minimum(self.max_speed, new_speed)
+  
+
+        self.instant_speed = new_speed
+        self.pose = new_pose
 
         return new_pose, new_speed
 
