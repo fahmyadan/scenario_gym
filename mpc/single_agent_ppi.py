@@ -10,6 +10,7 @@ from scenario_gym.utils import ArrayLike
 from scenario_gym.xosc_interface import import_scenario
 from scenario_gym.agent import Agent
 from mppi import MPPI_Base, SimulateBicycleModel
+from mppi_trajectory import MPPI_Trajectory
 from typing import Any, Dict, List, Optional, Tuple
 from scenario_gym.metrics import Metric
 from copy import deepcopy
@@ -49,7 +50,7 @@ class MPPI_Agent(Agent, MPPI_Base):
         self.sigma_acc = flags.sigma_acc
         self.sigma_steer = flags.sigma_steer
         self.sensor = sensor
-
+        self.sim_t = None
         self.Q = None
         self.w = None
         self.U = None
@@ -76,6 +77,8 @@ class MPPI_Agent(Agent, MPPI_Base):
                 nearest_goal_idx = idx
 
         c_global_distance = np.linalg.norm(nearest_pred_pose[:2] - goal_pose[:2])
+        
+        global_slice_traj = self.mppi_traj.slice_trajectory(self.global_path, traj)
         # c_local_distance = np.linalg.norm(nearest_local_pose[:2] - local_goal[:2])
         c_global_yaw = np.linalg.norm(nearest_pred_pose[2] - goal_pose[2])
         # c_local_yaw = np.linalg.norm(nearest_local_pose[2] - local_goal[2])
@@ -206,11 +209,13 @@ class MPPI_Agent(Agent, MPPI_Base):
         self.current_vel = state.velocities[self.entity]
         self.goal_pose = state.scenario.ego.trajectory.data[-1]
         self.global_path = state.scenario.ego.trajectory.data #(22,7) array (t,x,y,z,h,p,r)
+        self.mppi_traj = MPPI_Trajectory(self.global_path, state, self.time_horizon)
         self.last_action = None
         self.last_reward = None
         self.sensor.reset(state)
         self.controller.reset(state)
         self._reset()
+        self.sim_t = state.t
 
         network = (state.scenario.road_network.roads, state.scenario.road_network.lanes, state.scenario.road_network.intersections)
 
@@ -402,13 +407,12 @@ def run(FLAGS):
         vid_path = './mpc/videos_episodes/mppi_run_' + current_date_time + '_' + str(episode) + '.mp4'
         gym.rollout(render=True, video_path=vid_path)
         end = time.time() - start 
-        print(f'Episode {episode} took {end} seconds')
         if FLAGS.verbose > 0:
             rewards += metric.get_state() / FLAGS.verbose
             if episode % FLAGS.verbose == 0:
                 print(
-                    "Episode {} Reward {:.4} Loss {:.4}".format(
-                        episode, rewards, loss
+                    "Episode {} Reward {:.4} Time : {}s".format(
+                        episode, rewards, round(end)
                     )
                 )
                 rewards = 0.0
