@@ -296,7 +296,7 @@ def parse_args():
     )
     parser.add_argument(
         "--sigma_steer",
-        default=2.0,
+        default=0.2,
         type=float,
         help="Variance of gaussian noise.",
     )
