@@ -67,6 +67,16 @@ class MPPI_Agent(Agent, MPPI_Base):
         return self.vehicle_model 
     
     def compute_cost(self, traj, step, goal_pose):
+        """
+        Calculate the cost based on the distance between the predicted trajectory 
+        and the reference path. This assumes that the two trajectories are of the 
+        same length and are aligned in time. 
+        Also calculate the cost as the distance between the final pose of the predicted trajectory and the goal pose.
+
+        :param predicted_trajectory: np.ndarray of shape (N, 2) where N is the number of timesteps
+        :param reference_path: np.ndarray of shape (N, 2)
+        :return: float, total cost
+        """
 
         nearest_pred_pose = traj[:, -1]
 
@@ -77,33 +87,19 @@ class MPPI_Agent(Agent, MPPI_Base):
                 nearest_goal_idx = idx
 
         c_global_distance = np.linalg.norm(nearest_pred_pose[:2] - goal_pose[:2])
+
+        #Adjust trajectories to be same length and roughly aligned in time 
         
-        global_slice_traj = self.mppi_traj.slice_trajectory(self.global_path, traj)
-        # c_local_distance = np.linalg.norm(nearest_local_pose[:2] - local_goal[:2])
+        adj_traj, ref_path_section = self.mppi_traj.compare_trajectories(self.global_path, traj)
+
+        squared_diff = np.sum((adj_traj[:,1:3] - ref_path_section[:,1:3])**2, axis=1)
+
+        total_deviation = np.sum(squared_diff)
+
+        total_cost = c_global_distance + total_deviation
         c_global_yaw = np.linalg.norm(nearest_pred_pose[2] - goal_pose[2])
-        # c_local_yaw = np.linalg.norm(nearest_local_pose[2] - local_goal[2])
 
-        total_cost= c_global_distance  
-
-        """
-        Calculate the cost based on the distance between the predicted trajectory 
-        and the reference path. This assumes that the two trajectories are of the 
-        same length and are aligned in time.
-
-        :param predicted_trajectory: np.ndarray of shape (N, 2) where N is the number of timesteps
-        :param reference_path: np.ndarray of shape (N, 2)
-        :return: float, total cost
-        """
-        
-        # # Compute the squared difference between the two trajectories
-        # squared_diff = np.sum((predicted_trajectory - reference_path)**2, axis=1)
-        
-        # # Sum up to get the total cost
-        # total_cost = np.sum(squared_diff)
-            
-
-
-
+         
         return total_cost
 
     
@@ -141,7 +137,7 @@ class MPPI_Agent(Agent, MPPI_Base):
         # Generate samples for k trajectories 
         for i in range(self.k):
             # noise array
-            e_acc = np.random.normal(2, self.sigma_acc, self.time_horizon)
+            e_acc = np.random.normal(0, self.sigma_acc, self.time_horizon)
             e_steer = np.random.normal(0, self.sigma_steer, self.time_horizon)
 
             acc = self.control_vector[0, :] + e_acc
@@ -295,7 +291,7 @@ def parse_args():
     )
     parser.add_argument(
         "--sigma_acc",
-        default=5.0,
+        default=2.0,
         type=float,
         help="Variance of gaussian noise.",
     )
