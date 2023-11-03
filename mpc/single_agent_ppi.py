@@ -310,9 +310,9 @@ def parse_args():
     )
     parser.add_argument(
         "--lambd",
-        default=0.2,
+        default=1000.0,
         type=float,
-        help="Hyperparameter for calculating weights for MPPI cost function.",
+        help="Hyperparameter for calculating weights for MPPI cost function. A high lambda is chosen due to the high cost of deviating from the reference path",
     )
 
     parser.add_argument(
