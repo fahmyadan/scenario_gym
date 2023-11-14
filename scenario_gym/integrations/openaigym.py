@@ -18,9 +18,9 @@ from scenario_gym.sensor.map import RasterizedMapSensor
 from scenario_gym.state import TERMINAL_CONDITIONS, State
 
 try:
-    import gym
-    from gym import Env
-    from gym.spaces import Box, Space
+    import gymnasium as gym
+    from gymnasium import Env
+    from gymnasium.spaces import Box, Space
 except ImportError as e:
     raise ImportError(
         "gym is required for this module. Install it with `pip install gym`."
