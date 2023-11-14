@@ -96,7 +96,8 @@ class MPPI_Agent(Agent, MPPI_Base):
 
         total_deviation = np.sum(squared_diff)
 
-        total_cost = c_global_distance + total_deviation
+        # total_cost = c_global_distance + 1.1 * total_deviation
+        total_cost = total_deviation
         c_global_yaw = np.linalg.norm(nearest_pred_pose[2] - goal_pose[2])
 
          
