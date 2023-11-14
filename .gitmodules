@@ -1,0 +1,3 @@
+[submodule "sb3"]
+	path = sb3
+	url = https://github.com/fahmyadan/sb3.git
