@@ -21,9 +21,10 @@ import random
 from scenario_gym.entity import Entity
 from scenario_gym.controller import Controller, VehicleController
 from scenario_gym.manager import ScenarioManager
-from sb3.sb3.stable_baselines3.ppo import PPO
-from sb3.sb3.stable_baselines3.common.env_checker import check_env
+from sb3.stable_baselines3.ppo import PPO
+from sb3.stable_baselines3.common.env_checker import check_env
 from typing import Optional
+import gymnasium as gym 
 
 
 class SBPPO(Agent):
@@ -56,11 +57,11 @@ class SBPPO_Config(ScenarioManager):
     def create_agent(self, scenario: Optional[Scenario], entity: Entity, *args) -> Agent:
         if entity.ref == "ego":
             controller = VehicleController(entity, max_steer=cfg.max_steer)
-            sensor = MapSensor(entity)
+            self.sensor = MapSensor(entity)
             self.agent = SBPPO(
                 entity,
                 controller,
-                sensor,
+                self.sensor,
             )
             return self.agent
     
@@ -86,22 +87,41 @@ def run(args: argparse.Namespace) -> None:
     #     terminal_conditions=terminal_conditions,
     #     timestep=0.1,
     # )
-    # metrics = EpisodicReward()
+    metrics = EpisodicReward()
     # scn_gym.metrics.append(metrics)
     # scn_gym.load_scenario(args.scenario_path)
     global env, cfg 
     cfg = args
     ppo_cfg = SBPPO_Config()
-    env = openai_gym(create_agent=ppo_cfg.create_agent)
+    env = openai_gym(observation_space=config.obs_space,action_space=config.action_space, create_agent=ppo_cfg.create_agent)
+    metrics = EpisodicReward()
+    env.metrics.append(metrics)
     env.load_scenario(args.scenario_path, create_agent=ppo_cfg.create_agent)
     # model = PPO(args.policy, env, tensorboard_log= config.tb_logs)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    obs = env.reset()
-    obs_th = torch.tensor(obs, dtype=torch.bool).to(device=device)
-    t = 0
-    while t < cfg.n_steps:
-        action = ppo_cfg.agent.model(obs_th)
-        obs, reward, done, info = env.step(action)
+    
+
+    for episode in range(args.n_episodes):
+        obs = env.reset()
+        obs_th = torch.tensor(obs, dtype=torch.bool).to(device=device)
+        done = False
+        reward = 0
+
+        while not done:
+
+            policy = ppo_cfg.agent.model.policy
+
+            action = policy(obs_th)
+
+
+
+        
+
+
+
+
+
+
 
 
 
@@ -139,6 +159,19 @@ if __name__ == "__main__":
             "Scenarios",
             "d9726503-e04a-4e8b-b487-8805ef790c93.xosc",
         )
+    if config.sensor == 'MapSensor':
+
+        config.obs_space = gym.spaces.Box(low=0, high=1, shape=(20, 20, 2), dtype=np.bool_)
+        n_actions = 2 #acc, steering 
+        mean_low = -10 * np.ones(n_actions)
+        mean_high = 10 * np.ones(n_actions)
+        std_dev_low = np.zeros(n_actions)  # Standard deviations must be non-negative
+        std_dev_high = 10 * np.ones(n_actions)
+        combined_low = np.concatenate([mean_low, std_dev_low])
+        combined_high = np.concatenate([mean_high, std_dev_high])
+        config.action_space = gym.spaces.Box(low=combined_low, high=combined_high, dtype=np.float32)
+
+
 
     if config.tb_logs:
         from datetime import datetime
