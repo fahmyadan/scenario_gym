@@ -128,7 +128,7 @@ class ScenarioGym(ScenarioGym, Env):
     def reset(
         self,
         seed: Optional[int] = None,
-        return_info: bool = False,
+        return_info: bool = True,
         options: Optional[Dict] = None,
     ) -> Union[Observation, Tuple[Observation, Dict]]:
         """
@@ -223,7 +223,7 @@ class ScenarioGym(ScenarioGym, Env):
             for agent in self.state.agents.values():
                 agent.finish(self.state)
 
-        return ego_obs, reward, self.state.is_done, {}
+        return ego_obs, reward, self.state.is_done, self.state.is_done, {}
 
     def rollout(self, *args, **kwargs):
         """Raise an error if rollout is called with this env."""
