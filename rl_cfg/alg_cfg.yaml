@@ -16,7 +16,10 @@ seed: 11
 scenario_path: 
 tb_logs: True
 sensor: 'MapSensor'
-n_episodes: 100
+n_episodes: 10
+feature_dim: 400
 max_steer: 0.5
 max_accel: 5
+render: True 
+save_model: True
 
