@@ -143,3 +143,7 @@ data
 tests/input_files/Recordings/*.mp4
 tests/input_files/Recordings/*.xosc
 *.DS_Store
+
+rl_results/*
+saved_models/*
+```
