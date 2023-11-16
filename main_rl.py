@@ -16,28 +16,63 @@ from scenario_gym.state import State
 from scenario_gym.scenario import Scenario
 from scenario_gym.agent import Agent
 import sys
-from examples.ppo_agent import EpisodicReward, MapSensor
 import random
 from scenario_gym.entity import Entity
 from scenario_gym.controller import Controller, VehicleController
 from scenario_gym.manager import ScenarioManager
+from scenario_gym.sensor import RasterizedMapSensor
 from sb3.stable_baselines3.ppo import PPO
+from sb3.stable_baselines3.common.policies import ActorCriticPolicy 
 from sb3.stable_baselines3.common.env_checker import check_env
+from sb3.stable_baselines3.common.env_util import make_vec_env
 from typing import Optional
 import gymnasium as gym 
 
+class MapSensor(RasterizedMapSensor):
+    def _step(self, state):
+        obs = super()._step(state)
+        return obs.map[...,1]
+
+class EgoSpeedMetric(Metric):
+    """Compute the average speed of the ego."""
+    
+    def _reset(self, state):
+        self.ds = 0.
+        self.t = 0.
+    
+    def _step(self, state):
+        ego = state.scenario.entities[0]
+        self.ds += np.linalg.norm(state.velocities[ego][:2]) * state.dt
+        self.t = state.t
+        
+    def get_state(self):
+        return self.ds / self.t if self.t > 0 else 0.
+        
 
 class SBPPO(Agent):
 
     def __init__(self, entity: Entity, controller: Controller, sensor: Sensor):
         super().__init__(entity, controller, sensor)
-        self.model = PPO(cfg.policy, env, tensorboard_log= cfg.tb_logs).policy
+        self.model = PPO(cfg.policy, env, tensorboard_log= cfg.tb_logs, n_steps= cfg.n_steps, batch_size = cfg.batch_size)
+        
     
+    def _reset(self):
+        self.s_prev = None
+        self.a_prev = None
+        self.r_prev = None
+        self.pi_prev = None
+        self.ep_length = 0
+        self.ep_reward = 0.0
 
+
+    def _reward(self, state: State) -> float:
+        return 0.1
+
+    
     def _step(self, observation: Observation) -> Action:
 
         actions = self.model(observation)
-
+        self.ep_reward += self.r_prev
 
         return actions
 
@@ -82,56 +117,50 @@ def seed_all(seed: int) -> None:
     torch.cuda.manual_seed_all(seed)
 
 def run(args: argparse.Namespace) -> None:
-    terminal_conditions = ["ego_off_road", "ego_collision", "max_length"]
-    # scn_gym = ScenarioGym(
-    #     terminal_conditions=terminal_conditions,
-    #     timestep=0.1,
-    # )
-    metrics = EpisodicReward()
-    # scn_gym.metrics.append(metrics)
-    # scn_gym.load_scenario(args.scenario_path)
+    terminal_conditions = ["ego_off_road", "ego_collision"]
+    metrics = EgoSpeedMetric()
     global env, cfg 
     cfg = args
     ppo_cfg = SBPPO_Config()
     env = openai_gym(observation_space=config.obs_space,action_space=config.action_space, create_agent=ppo_cfg.create_agent)
-    metrics = EpisodicReward()
     env.metrics.append(metrics)
     env.load_scenario(args.scenario_path, create_agent=ppo_cfg.create_agent)
-    # model = PPO(args.policy, env, tensorboard_log= config.tb_logs)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    vec_env = make_vec_env(lambda: env, n_envs=1)
+    model = ppo_cfg.agent.model
+    model.learn(total_timesteps=10000, log_interval=10)
+    model.save(config.model_path)
+
+
+
     
+    # for episode in range(args.n_episodes):
+    #     obs = env.reset().transpose(2,0,1)[1:,:,:]
+    #     env.render(video_path=config.vid_path+'/'+str(episode)+'.mp4')
+    #     obs_th = torch.tensor(obs, dtype=torch.bool).to(device=device)
+    #     done = False
+    #     rewards = []
 
-    for episode in range(args.n_episodes):
-        obs = env.reset()
-        obs_th = torch.tensor(obs, dtype=torch.bool).to(device=device)
-        done = False
-        reward = 0
+    #     ep_reward = 0
+    #     count = 0 
+    #     while not done:
+    #         count+=1
 
-        while not done:
+    #         policy = ppo_cfg.agent.model.policy
 
-            policy = ppo_cfg.agent.model.policy
+    #         action, vf, log_probs = policy.forward(obs_th)
+    #         action_np= np.array(action.detach().cpu().numpy())
+    #         gym_action = (action_np[0][0], action_np[0][1])
+    #         print(f'acc: {gym_action[0]}, steering: {gym_action[1]}')
+    #         obs, reward, done, info = env.step(gym_action)
+    #         rewards.append(reward)
+    #         ep_reward += reward
 
-            action = policy(obs_th)
-
-
-
-        
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    pass
+    #         if done:
+    #             print('CHECK')
+    #     model.train() 
+    #     print('done check')
+    # pass
 
 
 
@@ -161,15 +190,11 @@ if __name__ == "__main__":
         )
     if config.sensor == 'MapSensor':
 
-        config.obs_space = gym.spaces.Box(low=0, high=1, shape=(20, 20, 2), dtype=np.bool_)
+        config.obs_space = gym.spaces.Box(low=0, high=1, shape=(20, 20), dtype=np.bool_)
         n_actions = 2 #acc, steering 
         mean_low = -10 * np.ones(n_actions)
         mean_high = 10 * np.ones(n_actions)
-        std_dev_low = np.zeros(n_actions)  # Standard deviations must be non-negative
-        std_dev_high = 10 * np.ones(n_actions)
-        combined_low = np.concatenate([mean_low, std_dev_low])
-        combined_high = np.concatenate([mean_high, std_dev_high])
-        config.action_space = gym.spaces.Box(low=combined_low, high=combined_high, dtype=np.float32)
+        config.action_space = gym.spaces.Box(low=mean_low, high=mean_high, dtype=np.float32)
 
 
 
@@ -182,7 +207,25 @@ if __name__ == "__main__":
             os.makedirs(log_path, exist_ok=True)
         
         config.tb_logs = log_path
-        
+    if config.render:
+
+
+        vid_path = './rl_episodes/' + current_date_time 
+        render_path = os.path.join(os.path.dirname(__file__), vid_path)
+        if not os.path.exists(render_path):
+            os.makedirs(render_path, exist_ok=True)
+        config.vid_path = render_path
+    
+    if config.save_model:
+
+
+        save_path = './saved_models/' + current_date_time 
+        model_path = os.path.join(os.path.dirname(__file__), save_path)
+        if not os.path.exists(model_path):
+            os.makedirs(model_path, exist_ok=True)
+        config.model_path = model_path
+
+
 
 
     run(config)
