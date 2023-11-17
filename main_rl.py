@@ -154,37 +154,20 @@ def run(args: argparse.Namespace) -> None:
     model.learn(total_timesteps=1e6, log_interval=10)
     model.save(config.model_path)
 
+    if config.eval:
 
-
-    
-    # for episode in range(args.n_episodes):
-    #     obs = env.reset().transpose(2,0,1)[1:,:,:]
-    #     
-    #     obs_th = torch.tensor(obs, dtype=torch.bool).to(device=device)
-    #     done = False
-    #     rewards = []
-
-    #     ep_reward = 0
-    #     count = 0 
-    #     while not done:
-    #         count+=1
-
-    #         policy = ppo_cfg.agent.model.policy
-
-    #         action, vf, log_probs = policy.forward(obs_th)
-    #         action_np= np.array(action.detach().cpu().numpy())
-    #         gym_action = (action_np[0][0], action_np[0][1])
-    #         print(f'acc: {gym_action[0]}, steering: {gym_action[1]}')
-    #         obs, reward, done, info = env.step(gym_action)
-    #         rewards.append(reward)
-    #         ep_reward += reward
-
-    #         if done:
-    #             print('CHECK')
-    #     model.train() 
-    #     print('done check')
-    # pass
-
+        eval_model = PPO.load(config.model_path)
+        
+        
+        for episode in range(config.n_episodes):
+            obs, _ = env.reset()
+            env.render(video_path=config.vid_path+'/episode'+str(episode)+'.mp4')
+            done = False
+            while not done:
+                action, _states = model.predict(obs)
+                obs, rewards, done, truncated, info = env.step(action)
+               
+        
 
 
 if __name__ == "__main__":
@@ -244,8 +227,8 @@ if __name__ == "__main__":
 
         save_path = './saved_models/' + current_date_time 
         model_path = os.path.join(os.path.dirname(__file__), save_path)
-        if not os.path.exists(model_path):
-            os.makedirs(model_path, exist_ok=True)
+        # if not os.path.exists(model_path):
+        #     os.makedirs(model_path, exist_ok=True)
         config.model_path = model_path
 
 
@@ -255,11 +238,8 @@ if __name__ == "__main__":
 
     
 
+    
 
 
-
-
-
-    print('check')
 
 
