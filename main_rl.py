@@ -54,19 +54,42 @@ class SBPPO(Agent):
     def __init__(self, entity: Entity, controller: Controller, sensor: Sensor):
         super().__init__(entity, controller, sensor)
         self.model = PPO(cfg.policy, env, tensorboard_log= cfg.tb_logs, n_steps= cfg.n_steps, batch_size = cfg.batch_size)
-        
+        self.entity
     
     def _reset(self):
-        self.s_prev = None
-        self.a_prev = None
+        self.st_prev = None
+        self.vel_prev = np.array([0.0, 0.0])
         self.r_prev = None
         self.pi_prev = None
+        self.ds = 0.0
         self.ep_length = 0
         self.ep_reward = 0.0
+    
+    def _step(self, act):
+        pass
 
 
     def _reward(self, state: State) -> float:
-        return 0.1
+        ego = state.scenario.entities[0]
+        current_v = state.velocities[ego][:2]
+        dv = current_v - self.vel_prev 
+
+
+        acc = np.linalg.norm(dv) / state.dt
+
+        acc_penalty = -1 * acc**2
+
+        speed = np.linalg.norm(dv)
+        max_speed = state.agents[self.entity].controller.max_speed
+
+        if max_speed is not None:
+
+            norm_speed = speed / max_speed
+        else:
+            norm_speed = speed / 30
+
+
+        return acc_penalty + norm_speed
 
     
     def _step(self, observation: Observation) -> Action:
@@ -128,7 +151,7 @@ def run(args: argparse.Namespace) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     vec_env = make_vec_env(lambda: env, n_envs=1)
     model = ppo_cfg.agent.model
-    model.learn(total_timesteps=10000, log_interval=10)
+    model.learn(total_timesteps=1e6, log_interval=10)
     model.save(config.model_path)
 
 
@@ -136,7 +159,7 @@ def run(args: argparse.Namespace) -> None:
     
     # for episode in range(args.n_episodes):
     #     obs = env.reset().transpose(2,0,1)[1:,:,:]
-    #     env.render(video_path=config.vid_path+'/'+str(episode)+'.mp4')
+    #     
     #     obs_th = torch.tensor(obs, dtype=torch.bool).to(device=device)
     #     done = False
     #     rewards = []
