@@ -22,4 +22,5 @@ max_steer: 0.5
 max_accel: 5
 render: True 
 save_model: True
+eval: True
 
